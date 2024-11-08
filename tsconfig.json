@@ -1,0 +1,19 @@
+{
+    "exclude": [ "mnt"],
+    "compilerOptions": {
+        "lib": [
+          "es2020", "DOM"
+        ],
+        "esModuleInterop": true,
+        "experimentalDecorators": true,
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "outDir": "lib",
+        "sourceMap": true,
+        "sourceRoot": "./src",
+        "strict": true,
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "target": "ES2020"
+    }
+}

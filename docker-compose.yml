@@ -1,0 +1,39 @@
+services:
+  norsk:
+    image: norskvideo/norsk:v1.0.391-main
+    command: --license-file /root/norsk_license.json
+    volumes:
+      - ./support/norsk_license.json:/root/norsk_license.json
+      - ./mnt:/mnt
+      - /dev/shm:/dev/shm
+    devices:
+      - /dev/nvme0n1
+      - /dev/nvme1n1
+    user: ${DUID}:${DGID}
+    shm_size: '2gb'
+    ports:
+      - 5001:5001/udp
+    healthcheck:
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:6791"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 5s
+
+  app:
+    image: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NORSK_HOST: norsk
+    user: ${DUID}:${DGID}
+    volumes:
+      - ./mnt:/mnt
+    working_dir: /usr/src/app/
+    command: npm run start  
+    depends_on:
+      norsk:
+        condition: service_healthy
+
