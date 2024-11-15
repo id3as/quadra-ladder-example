@@ -12,5 +12,3 @@ COPY package*.json ./
 COPY lib ./lib
 COPY node_modules ./node_modules/
 
-# We're using unreleased assets
-COPY _vendored ./_vendored/

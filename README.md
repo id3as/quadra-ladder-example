@@ -1,3 +1,10 @@
+# Setting up
+
+```
+npm install
+npm run build
+```
+
 # Starting and stopping
 
 Under the hood this is just a docker compose up using the docker-compose.yml in this repository. For convenience, an up.sh and stop.sh are provided to make sure the container is ran under a sensible user account.
