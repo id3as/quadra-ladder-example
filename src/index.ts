@@ -8,6 +8,8 @@ import {
   SrtInputSettings,
   selectVideoRendition,
   SourceMediaNode,
+  CmafDestinationSettings,
+  selectPlaylist,
 } from "@norskvideo/norsk-sdk";
 
 
@@ -23,6 +25,7 @@ const ladderRungs: VideoEncodeRung[] = [
     codec: {
       type: 'quadra-h264',
       lookAheadDepth: 10,
+      intraPeriod: 50,
       gopPresetIndex: 9,
       crf: 24,
       vbvBufferSize: 2000,
@@ -37,6 +40,7 @@ const ladderRungs: VideoEncodeRung[] = [
       type: 'quadra-h264',
       lookAheadDepth: 10,
       gopPresetIndex: 9,
+      intraPeriod: 50,
       crf: 24,
       vbvBufferSize: 2000,
       bitrate: 2000000
@@ -44,13 +48,13 @@ const ladderRungs: VideoEncodeRung[] = [
   },
   {
     name: "540p",
-    frameRate: { frames: 25, seconds: 1 },
     width: 960,
     height: 540,
     codec: {
       type: 'quadra-h264',
       lookAheadDepth: 10,
       gopPresetIndex: 9,
+      intraPeriod: 50,
       crf: 24,
       vbvBufferSize: 2000,
       bitrate: 1000000
@@ -58,13 +62,13 @@ const ladderRungs: VideoEncodeRung[] = [
   },
   {
     name: "320p",
-    frameRate: { frames: 25, seconds: 1 },
     width: 640,
     height: 320,
     codec: {
       type: 'quadra-h264',
       lookAheadDepth: 10,
       gopPresetIndex: 9,
+      intraPeriod: 50,
       crf: 24,
       vbvBufferSize: 2000,
       bitrate: 500000
@@ -72,7 +76,6 @@ const ladderRungs: VideoEncodeRung[] = [
   },
 ];
 
-// TODO: SDI, etc
 async function tsOverIpInput(norsk: Norsk) {
   return norsk.input.udpTs({
     id: "source",
@@ -82,11 +85,23 @@ async function tsOverIpInput(norsk: Norsk) {
   })
 }
 
+async function sdiInput(norsk: Norsk) {
+  return norsk.input.deckLink({
+    id: "source",
+    sourceName: "source",
+    cardIndex: 0,
+    channelLayout: 'stereo',
+    videoConnection: 'sdi'
+  })
+}
+
+
 export async function main() {
   const norsk = await Norsk.connect();
 
   // TODO: Switch this out for SDI/etc based on configuration
-  const input = await tsOverIpInput(norsk);
+  // const input = await tsOverIpInput(norsk);
+  const input = await sdiInput(norsk);
   session(norsk, input);
 }
 
@@ -122,6 +137,7 @@ export async function session(norsk: Norsk, input: SourceMediaNode) {
       id: `whep-${r.name}`
     })
     whep.subscribe([
+      { source: input, sourceSelector: selectAudio },
       { source: encode, sourceSelector: selectVideoRendition(r.name) }
     ])
     return whep;
@@ -131,6 +147,46 @@ export async function session(norsk: Norsk, input: SourceMediaNode) {
     console.log("Whep player at", o.playerUrl);
   })
 
+  const localDestination: CmafDestinationSettings = {
+    type: 'local',
+    id: 'local',
+    retentionPeriodSeconds: 360
+  }
+  const videoPlaylists = await Promise.all(ladderRungs.map(async (r) => {
+    const videoCmaf = await norsk.output.cmafVideo({
+      id: `cmaf-${r.name}`,
+      segmentDurationSeconds: 8,
+      partDurationSeconds: 1,
+      destinations: [localDestination]
+    })
+    videoCmaf.subscribe([
+      { source: encode, sourceSelector: selectVideoRendition(r.name) }
+    ])
+    return videoCmaf;
+  }))
+
+  const audioPlaylist = await norsk.output.cmafAudio({
+    id: `cmaf-audio`,
+    segmentDurationSeconds: 8,
+    partDurationSeconds: 1,
+    destinations: [localDestination]
+  })
+  audioPlaylist.subscribe([
+    { source: input, sourceSelector: selectAudio }
+  ])
+
+  const mv = await norsk.output.cmafMultiVariant({
+    id: 'mv',
+    playlistName: 'default',
+    destinations: [localDestination]
+  })
+  mv.subscribe(
+    [audioPlaylist].concat(videoPlaylists).map((p) => {
+      return { source: p, sourceSelector: selectPlaylist }
+    })
+  );
+  console.log("CMAF at", mv.url);
+
   // We're waiting on the input context
   // if the source is raw (SDI) then there is no point in using the decoder
   const AwaitInputContext = {
@@ -139,9 +195,11 @@ export async function session(norsk: Norsk, input: SourceMediaNode) {
       if (videoStream?.message.case != 'video') return false;
 
       if (videoStream.message.value.codec == 'raw') {
+        console.log("Input is raw, going straight to deinterlace");
         decode.subscribe([]);
         deinterlace.subscribe([{ source: input, sourceSelector: selectVideo }])
       } else {
+        console.log("Input is encoded, inserting decode step");
         decode.subscribe([{ source: input, sourceSelector: selectVideo }]);
         deinterlace.subscribe([{ source: decode, sourceSelector: selectVideo }])
       }
@@ -149,6 +207,7 @@ export async function session(norsk: Norsk, input: SourceMediaNode) {
     }
   }
   input.registerForContextChange(AwaitInputContext);
+  void AwaitInputContext.sourceContextChange();
 }
 
 void main();

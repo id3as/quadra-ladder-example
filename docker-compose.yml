@@ -1,18 +1,20 @@
 services:
   norsk:
-    image: norskvideo/norsk:v1.0.391-main
+    image: norskvideo/norsk:v1.0.392-main
     command: --license-file /root/norsk_license.json
     volumes:
       - ./support/norsk_license.json:/root/norsk_license.json
       - ./mnt:/mnt
       - /dev/shm:/dev/shm
     devices:
-      - /dev/nvme0n1
       - /dev/nvme1n1
+      - /dev/blackmagic
     user: ${DUID}:${DGID}
     shm_size: '2gb'
     ports:
       - 5001:5001/udp
+      - 16791:6791
+      - 18080:8080
     healthcheck:
       test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:6791"]
       interval: 10s
